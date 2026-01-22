@@ -85,10 +85,14 @@ bool CheckBridgeHeartbeat()
    
    // Parse ISO timestamp (simplified - just check if recent)
    // We'll use file modification time instead for reliability
+   // IMPORTANT: Use TimeLocal() not TimeCurrent() because file timestamps are local
    datetime fileTime = (datetime)FileGetInteger(heartbeatFileName, FILE_MODIFY_DATE, false);
-   datetime now = TimeCurrent();
+   datetime now = TimeLocal();  // Use local time to match file system timestamps
    
    int ageSeconds = (int)(now - fileTime);
+   
+   // Sanity check: if age is negative (clock skew), treat as valid
+   if(ageSeconds < 0) ageSeconds = 0;
    
    if(ageSeconds > HeartbeatTimeoutSeconds)
      {
