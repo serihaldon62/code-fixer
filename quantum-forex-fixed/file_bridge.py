@@ -203,11 +203,11 @@ def process_request(file_path):
         
         # Get quantum probabilities
         start_time = time.time()
-        probs = q_model.predict_proba(X_input)[0]
+        raw_output = q_model.predict_proba(X_input)
         inference_time = (time.time() - start_time) * 1000
         
         log.info(f"Quantum circuit executed in {inference_time:.1f}ms")
-        log.info(f"Raw probability output: {probs}")
+        log.info(f"Raw quantum output: {raw_output}")
         
         # =====================================================================
         # QUANTUM OUTPUT INTERPRETATION
@@ -216,16 +216,37 @@ def process_request(file_path):
         # - RealAmplitudes ansatz: trainable rotation gates
         # - Z-observable measurement: collapses quantum state to classical prediction
         #
-        # predict_proba returns [P(class0), P(class1)] = [P(down), P(up)]
-        # These probabilities come from the quantum measurement statistics.
+        # The output can be:
+        # 1. Raw expectation value [-1, +1] from Z-observable (single float)
+        # 2. Sklearn-style probabilities [P(down), P(up)] (two floats)
+        #
+        # We detect the format and convert accordingly.
         # =====================================================================
         
-        if len(probs) >= 2:
-            p_down = float(probs[0])
-            p_up = float(probs[1])
-        else:
-            p_up = float(probs[0])
+        # Flatten and get the output
+        raw_flat = np.array(raw_output).flatten()
+        
+        if len(raw_flat) == 1:
+            # Single expectation value in range [-1, +1]
+            # Convert to probabilities: P(up) = (value + 1) / 2
+            expectation = float(raw_flat[0])
+            # Clamp to valid range
+            expectation = max(-1.0, min(1.0, expectation))
+            p_up = (expectation + 1.0) / 2.0
             p_down = 1.0 - p_up
+            log.info(f"Expectation value: {expectation:.4f} -> P(UP)={p_up:.4f}, P(DOWN)={p_down:.4f}")
+        elif len(raw_flat) >= 2:
+            # Standard sklearn format [P(down), P(up)]
+            p_down = float(raw_flat[0])
+            p_up = float(raw_flat[1])
+            # Normalize if needed
+            total = p_down + p_up
+            if total > 0:
+                p_down /= total
+                p_up /= total
+        else:
+            # Fallback
+            p_down, p_up = 0.5, 0.5
         
         log.info(f"Quantum probabilities: P(DOWN)={p_down:.4f}, P(UP)={p_up:.4f}")
         
