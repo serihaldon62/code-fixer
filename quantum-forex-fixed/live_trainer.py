@@ -60,11 +60,11 @@ def validate_model(model, X_test, y_test):
     try:
         y_pred = model.predict(X_test)
         
-        # Core metrics
+        # Core metrics (use average='binary' only for binary classification)
         accuracy = accuracy_score(y_test, y_pred)
-        precision = precision_score(y_test, y_pred, zero_division=0)
-        recall = recall_score(y_test, y_pred, zero_division=0)
-        f1 = f1_score(y_test, y_pred, zero_division=0)
+        precision = precision_score(y_test, y_pred, zero_division=0, average='weighted')
+        recall = recall_score(y_test, y_pred, zero_division=0, average='weighted')
+        f1 = f1_score(y_test, y_pred, zero_division=0, average='weighted')
         cm = confusion_matrix(y_test, y_pred)
         
         # Log results
@@ -217,10 +217,22 @@ def main():
             log.info("-" * 40)
             log.info("QUANTUM VERIFICATION: Testing live inference...")
             test_sample = X_test[0:1]
-            probs = q_model.predict_proba(test_sample)[0]
+            probs = q_model.predict_proba(test_sample)
             log.info(f"  Input: {test_sample[0]}")
-            log.info(f"  Quantum output: P(DOWN)={probs[0]:.4f}, P(UP)={probs[1]:.4f}")
-            log.info(f"  Prediction: {'UP' if probs[1] > probs[0] else 'DOWN'}")
+            # Handle both single probability and [P(down), P(up)] formats
+            if probs.ndim == 1 and len(probs) == 1:
+                # Single probability output (for class 1)
+                p_up = float(probs[0])
+                p_down = 1.0 - p_up
+            elif probs.ndim == 2 and probs.shape[1] >= 2:
+                # Standard sklearn format [P(down), P(up)]
+                p_down = float(probs[0, 0])
+                p_up = float(probs[0, 1])
+            else:
+                # Fallback
+                p_down, p_up = 0.5, 0.5
+            log.info(f"  Quantum output: P(DOWN)={p_down:.4f}, P(UP)={p_up:.4f}")
+            log.info(f"  Prediction: {'UP' if p_up > p_down else 'DOWN'}")
             log.info("✓ Quantum inference working correctly")
             log.info("-" * 40)
             
